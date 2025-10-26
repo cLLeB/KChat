@@ -8,7 +8,7 @@ services:
       npm ci &&
       mkdir -p dist &&
       npx vite build &&
-      npx esbuild server/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.js --external:express --external:ws --external:drizzle-orm --external:@neondatabase/serverless --external:memorystore --external:connect-pg-simple --external:passport --external:passport-local --external:express-session --external:crypto --external:path --external:fs --external:http --external:url --external:zod --external:zod-validation-error --external:nanoid &&
+      npx esbuild server/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.js --packages=external &&
       ls -la dist/
     startCommand: node dist/index.js
     envVars:
