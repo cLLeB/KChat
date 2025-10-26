@@ -37,6 +37,12 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
 
+  // WebSocket upgrade headers
+  if (req.headers.upgrade === 'websocket') {
+    res.header('Connection', 'Upgrade');
+    res.header('Upgrade', 'websocket');
+  }
+
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
   } else {
@@ -102,12 +108,16 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
+  // Configure server with keep-alive settings for WebSocket compatibility
+  server.keepAliveTimeout = 65000; // 65 seconds
+  server.headersTimeout = 66000; // 66 seconds
+
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen(port, () => {
+  server.listen(port, '0.0.0.0', () => {
     log(`serving on port ${port}`);
   });
 })();

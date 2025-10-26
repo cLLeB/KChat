@@ -3,7 +3,7 @@ services:
     name: kchat-chat
     env: node
     region: oregon
-    plan: starter
+    plan: free
     buildCommand: |
       npm ci &&
       npx vite build &&
@@ -14,5 +14,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 5000
+        generateValue: true
     healthCheckPath: /api/health
+    healthCheckTimeout: 100
+    autoDeploy: true

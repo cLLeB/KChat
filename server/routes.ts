@@ -15,17 +15,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
   // WebSocket server for real-time messaging
-  const wss = new WebSocketServer({ 
-    server: httpServer, 
+  const wss = new WebSocketServer({
+    server: httpServer,
     path: '/ws',
-    verifyClient: (info: any) => {
+    perMessageDeflate: false, // Disable compression for better proxy compatibility
+    clientTracking: true,
+    verifyClient: (info: any, callback) => {
+      // Log WebSocket connection attempts for debugging
+      console.log(`[WebSocket] Connection attempt from ${info.origin} to ${info.req.url}`);
       // Allow all connections for now - can add authentication later
-      return true;
+      callback(true);
     }
   });
-  
+
   wss.on('error', (error) => {
     console.error('WebSocket server error:', error);
+  });
+
+  wss.on('connection', (ws: ExtendedWebSocket, request) => {
+    console.log(`[WebSocket] New connection established from ${request.socket.remoteAddress}`);
+    const connectionId = randomUUID();
+    connections.set(connectionId, ws);
+    
+    ws.on('message', async (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        
+        switch (message.type) {
+          case 'join_room':
+            await handleJoinRoom(ws, message, connectionId);
+            break;
+            
+          case 'send_message':
+            await handleSendMessage(ws, message);
+            break;
+            
+          case 'typing':
+            await handleTyping(ws, message);
+            break;
+            
+          case 'call_offer':
+            await handleCallOffer(ws, message);
+            break;
+            
+          case 'call_answer':
+            await handleCallAnswer(ws, message);
+            break;
+            
+          case 'call_ice_candidate':
+            await handleCallIceCandidate(ws, message);
+            break;
+            
+          case 'call_rejected':
+            await handleCallRejected(ws, message);
+            break;
+            
+          case 'call_ended':
+            await handleCallEnded(ws, message);
+            break;
+            
+          case 'leave_room':
+            await handleLeaveRoom(ws, connectionId);
+            break;
+        }
+      } catch (error) {
+        ws.send(JSON.stringify({ type: 'error', error: 'Invalid message format' }));
+      }
+    });
+    
+    ws.on('close', () => {
+      console.log('WebSocket connection closed');
+      handleLeaveRoom(ws, connectionId);
+      connections.delete(connectionId);
+    });
+
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      connections.delete(connectionId);
+    });
   });
   
   console.log('WebSocket server initialized on path /ws');
@@ -60,6 +127,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint for Docker/container health checks
   app.get('/api/health', (req, res) => {
     res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
+  });
+
+  // WebSocket health check
+  app.get('/api/health/ws', (req, res) => {
+    res.status(200).json({
+      status: 'websocket_healthy',
+      timestamp: new Date().toISOString(),
+      connections: connections.size
+    });
+  });
+
+  // WebSocket connection test endpoint
+  app.get('/api/test/ws', (req, res) => {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.get('host');
+    const wsUrl = `${protocol === 'https' ? 'wss' : 'ws'}://${host}/ws`;
+
+    res.json({
+      status: 'websocket_test',
+      websocketUrl: wsUrl,
+      currentConnections: connections.size,
+      timestamp: new Date().toISOString(),
+      instructions: 'Use this URL in your WebSocket client: ' + wsUrl
+    });
   });
   
   // Create a new chat room

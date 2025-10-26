@@ -36,51 +36,93 @@ export class WebSocketService {
   
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      // In production (Render), always use secure WebSocket
-      const protocol = process.env.NODE_ENV === 'production' ? 'wss:' : (window.location.protocol === "https:" ? "wss:" : "ws:");
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      try {
+        // In production (Render), always use secure WebSocket with proper domain
+        let wsUrl: string;
 
-      this.ws = new WebSocket(wsUrl);
-      
-      this.ws.onopen = () => {
-        console.log('WebSocket connected');
-        this.reconnectAttempts = 0;
-        resolve();
-      };
-      
-      this.ws.onmessage = (event) => {
-        try {
-          const message: WebSocketMessage = JSON.parse(event.data);
-          this.handleMessage(message);
-        } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
+        if (process.env.NODE_ENV === 'production') {
+          // Use the current domain for production (Render will proxy WebSocket)
+          wsUrl = `wss://${window.location.host}/ws`;
+        } else {
+          // Development: use protocol detection
+          wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
         }
-      };
-      
-      this.ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        this.attemptReconnect();
-      };
-      
-      this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        console.error('WebSocket state:', this.ws?.readyState);
-        console.error('WebSocket URL:', wsUrl);
+
+        console.log(`[WebSocket] Connecting to ${wsUrl}`);
+        this.ws = new WebSocket(wsUrl);
+
+        this.ws.onopen = () => {
+          console.log('[WebSocket] Connected successfully');
+          this.reconnectAttempts = 0;
+          this.reconnectDelay = 1000; // Reset delay
+          resolve();
+        };
+
+        this.ws.onmessage = (event) => {
+          try {
+            const message: WebSocketMessage = JSON.parse(event.data);
+            this.handleMessage(message);
+          } catch (error) {
+            console.error('Failed to parse WebSocket message:', error);
+          }
+        };
+
+        this.ws.onclose = (event) => {
+          console.log(`[WebSocket] Disconnected (code: ${event.code}, reason: ${event.reason})`);
+          this.attemptReconnect();
+        };
+
+        this.ws.onerror = (error) => {
+          console.error('[WebSocket] Connection error:', error);
+          console.error('[WebSocket] State:', this.ws?.readyState);
+          console.error('[WebSocket] URL:', wsUrl);
+
+          // Try alternative connection method for Render
+          if (process.env.NODE_ENV === 'production' && wsUrl.includes('wss://')) {
+            console.log('[WebSocket] Trying fallback connection method...');
+            // Sometimes Render needs a different approach
+            const fallbackUrl = `wss://${window.location.hostname}/ws`;
+            console.log('[WebSocket] Fallback URL:', fallbackUrl);
+          }
+
+          reject(error);
+        };
+
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+            console.error('[WebSocket] Connection timeout');
+            this.ws.close();
+            reject(new Error('WebSocket connection timeout'));
+          }
+        }, 10000);
+
+      } catch (error) {
+        console.error('[WebSocket] Setup error:', error);
         reject(error);
-      };
+      }
     });
   }
   
   private attemptReconnect() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-      
+      const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1); // Exponential backoff
+      console.log(`[WebSocket] Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${delay}ms`);
+
       setTimeout(() => {
-        this.connect().catch(console.error);
-      }, this.reconnectDelay * this.reconnectAttempts);
+        this.connect().catch((error) => {
+          console.error(`[WebSocket] Reconnection attempt ${this.reconnectAttempts} failed:`, error);
+        });
+      }, delay);
     } else {
-      console.error('Max reconnection attempts reached');
+      console.error('[WebSocket] Max reconnection attempts reached');
+      // Notify any listeners that connection failed permanently
+      this.messageHandlers.forEach((handler, type) => {
+        if (type === 'connection_failed') {
+          handler({ attempts: this.maxReconnectAttempts });
+        }
+      });
     }
   }
   
