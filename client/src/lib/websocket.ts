@@ -36,9 +36,10 @@ export class WebSocketService {
   
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      // In production (Render), always use secure WebSocket
+      const protocol = process.env.NODE_ENV === 'production' ? 'wss:' : (window.location.protocol === "https:" ? "wss:" : "ws:");
       const wsUrl = `${protocol}//${window.location.host}/ws`;
-      
+
       this.ws = new WebSocket(wsUrl);
       
       this.ws.onopen = () => {

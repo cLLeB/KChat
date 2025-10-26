@@ -80,7 +80,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ 
         roomId: room.id,
-        link: `${req.protocol}://${req.get('host')}/chat/${room.id}`,
+        link: `${process.env.NODE_ENV === 'production' ? 'https' : req.protocol}://${req.get('host')}/chat/${room.id}`,
         expiresAt: room.expiresAt
       });
     } catch (error) {
@@ -92,25 +92,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/chat/:roomId', async (req, res) => {
     try {
       const { roomId } = req.params;
+      console.log(`[Room Lookup] Room ID: ${roomId}, Host: ${req.get('host')}, Protocol: ${req.protocol}`);
+
       const room = await storage.getChatRoom(roomId);
-      
+
       if (!room) {
+        console.log(`[Room Lookup] Room not found: ${roomId}`);
         return res.status(404).json({ error: 'Chat room not found' });
       }
-      
+
       if (room.expiresAt && room.expiresAt < new Date()) {
+        console.log(`[Room Lookup] Room expired: ${roomId}`);
         await storage.deleteChatRoom(roomId);
         return res.status(410).json({ error: 'Chat room has expired' });
       }
-      
+
       const participants = await storage.getParticipants(roomId);
-      
+
+      console.log(`[Room Lookup] Room found: ${roomId}, Participants: ${participants.length}`);
+
       res.json({
         room,
         participantCount: participants.length,
         canJoin: participants.length < 2
       });
     } catch (error) {
+      console.error(`[Room Lookup] Error for room ${req.params.roomId}:`, error);
       res.status(500).json({ error: 'Failed to get chat room' });
     }
   });
