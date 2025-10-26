@@ -15,9 +15,30 @@ const log = (message: string, source = "express") => {
 
 // Production static file serving
 const serveStatic = (app: express.Express) => {
-  const distPath = path.resolve(process.cwd(), "dist/public");
+  // Check multiple possible locations for static files
+  const possiblePaths = [
+    path.resolve(process.cwd(), "dist/public"), // Development default
+    path.resolve(process.cwd(), "dist"),       // Render production
+    path.resolve(process.cwd(), "../dist"),    // Alternative locations
+  ];
+
+  let distPath = possiblePaths[0];
+  for (const testPath of possiblePaths) {
+    try {
+      // Try to access the index.html file
+      const fs = require('fs');
+      if (fs.existsSync(path.resolve(testPath, "index.html"))) {
+        distPath = testPath;
+        break;
+      }
+    } catch (e) {
+      // Continue checking other paths
+    }
+  }
+
+  console.log(`[Static] Serving files from: ${distPath}`);
   app.use(express.static(distPath));
-  
+
   // Catch-all handler for SPA routing
   app.get("*", (req, res) => {
     res.sendFile(path.resolve(distPath, "index.html"));
