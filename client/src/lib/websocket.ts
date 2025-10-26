@@ -37,18 +37,18 @@ export class WebSocketService {
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        // In production (Render), always use secure WebSocket with proper domain
-        let wsUrl: string;
-
-        if (process.env.NODE_ENV === 'production') {
-          // Use the current domain for production (Render will proxy WebSocket)
-          wsUrl = `wss://${window.location.host}/ws`;
-        } else {
-          // Development: use protocol detection
-          wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
-        }
+        // Dynamically construct WebSocket URL based on current location
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        
+        // FIXED: Remove the /ws path - connect directly to the host
+        // Render serves WebSocket on the same domain without path
+        const wsUrl = `${protocol}//${host}`;
 
         console.log(`[WebSocket] Connecting to ${wsUrl}`);
+        console.log(`[WebSocket] Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`[WebSocket] Protocol: ${protocol}, Host: ${host}`);
+        
         this.ws = new WebSocket(wsUrl);
 
         this.ws.onopen = () => {
@@ -76,15 +76,6 @@ export class WebSocketService {
           console.error('[WebSocket] Connection error:', error);
           console.error('[WebSocket] State:', this.ws?.readyState);
           console.error('[WebSocket] URL:', wsUrl);
-
-          // Try alternative connection method for Render
-          if (process.env.NODE_ENV === 'production' && wsUrl.includes('wss://')) {
-            console.log('[WebSocket] Trying fallback connection method...');
-            // Sometimes Render needs a different approach
-            const fallbackUrl = `wss://${window.location.hostname}/ws`;
-            console.log('[WebSocket] Fallback URL:', fallbackUrl);
-          }
-
           reject(error);
         };
 

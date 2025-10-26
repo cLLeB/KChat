@@ -17,7 +17,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // WebSocket server for real-time messaging
   const wss = new WebSocketServer({
     server: httpServer,
-    path: '/ws',
     perMessageDeflate: false, // Disable compression for better proxy compatibility
     clientTracking: true,
     verifyClient: (info: any, callback) => {
